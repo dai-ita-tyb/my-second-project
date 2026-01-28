@@ -1,0 +1,702 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>せん断下の相分離シミュレーション（単一HTML / インストール不要）</title>
+  <style>
+  /* Clean UI for internal demos */
+  :root{
+    --bg:#0b1020;
+    --panel:#121a33;
+    --text:#e8ecff;
+    --muted:#a9b2d6;
+    --accent:#7aa2ff;
+    --accent2:#7dffbe;
+    --border:rgba(255,255,255,0.12);
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", "Noto Sans JP", Helvetica, Arial;
+    background: radial-gradient(1200px 800px at 20% 0%, #12204a 0%, var(--bg) 55%);
+    color:var(--text);
+  }
+  header{
+    display:flex; gap:14px; align-items:flex-start; justify-content:space-between;
+    padding:16px 20px;
+    border-bottom:1px solid var(--border);
+    background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0));
+  }
+  .title h1{margin:0; font-size:16px; letter-spacing:0.3px}
+  .subtitle{margin:6px 0 0; color:var(--muted); font-size:12px; line-height:1.4}
+  .buttons{display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end}
+  button{
+    border:1px solid var(--border);
+    background: rgba(255,255,255,0.06);
+    color:var(--text);
+    padding:9px 10px;
+    border-radius:10px;
+    cursor:pointer;
+    transition: transform .05s ease, background .2s ease;
+    font-size:13px;
+  }
+  button:hover{background: rgba(255,255,255,0.10)}
+  button:active{transform: translateY(1px)}
+  button.primary{background: rgba(122,162,255,0.18); border-color: rgba(122,162,255,0.35)}
+
+  main{display:grid; grid-template-columns: 440px 1fr; gap:16px; padding:16px 20px 22px;}
+  .panel{
+    background: rgba(18,26,51,0.78);
+    border:1px solid var(--border);
+    border-radius:14px;
+    padding:14px 14px 10px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.30);
+  }
+  .panel h2{margin:4px 4px 12px; font-size:14px; color:var(--muted); font-weight:600}
+  .grid{display:grid; grid-template-columns:1fr; gap:10px}
+  label{display:grid; gap:6px; font-size:12px; color:var(--muted)}
+  select, input[type=range]{width:100%}
+  select{
+    background: rgba(255,255,255,0.06);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 8px 10px;
+  }
+  .val{color:var(--text); font-variant-numeric: tabular-nums}
+  .checkbox{grid-template-columns:auto 1fr; align-items:center; gap:10px}
+  .checkbox input{width:16px; height:16px}
+
+  .tabs{display:flex; gap:8px; padding:0 4px 10px}
+  .tab{padding:8px 10px; border-radius:999px; font-size:12px; background: rgba(255,255,255,0.05)}
+  .tab.active{background: rgba(125,255,190,0.14); border-color: rgba(125,255,190,0.35)}
+  .tabBody.hidden{display:none}
+
+  .stats{
+    margin-top:12px;
+    display:grid;
+    grid-template-columns: 1fr 1fr;
+    gap:8px;
+    padding:10px;
+    border-radius:12px;
+    border:1px dashed rgba(255,255,255,0.18);
+    background: rgba(0,0,0,0.15);
+    font-size:12px;
+    color:var(--muted);
+  }
+  .stats .k{color:rgba(232,236,255,0.85)}
+
+  .help{margin-top:10px; border:1px solid var(--border); border-radius:12px; overflow:hidden; background: rgba(15,22,48,0.55)}
+  .help summary{padding:10px 10px; cursor:pointer; color:rgba(232,236,255,0.90); font-size:12px}
+  .helpBody{padding:0 12px 12px; color:var(--muted); font-size:12px; line-height:1.65}
+  .helpBody code{color:var(--accent2)}
+
+  .view{display:flex; flex-direction:column; align-items:center; justify-content:flex-start; gap:10px}
+  canvas{
+    width:min(76vh, 860px);
+    height:min(76vh, 860px);
+    border-radius:16px;
+    border:1px solid var(--border);
+    image-rendering: pixelated;
+    background: rgba(0,0,0,0.20);
+    box-shadow: 0 20px 80px rgba(0,0,0,0.35);
+  }
+  .hint{color:var(--muted); font-size:12px}
+  footer{padding:10px 20px 16px; color:rgba(232,236,255,0.65); font-size:11px}
+  .sep{opacity:0.5; margin:0 8px}
+
+  @media (max-width: 980px){
+    main{grid-template-columns:1fr;}
+    canvas{width:min(82vw, 820px); height:min(82vw, 820px);}
+  }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="title">
+      <h1>せん断下の相分離（単一HTMLで動作）</h1>
+      <p class="subtitle">インストール不要 / 外部ライブラリ不要 / 2D Cahn–Hilliard（移流＋拡散）体験デモ</p>
+    </div>
+    <div class="buttons">
+      <button id="btnToggle" class="primary">▶ 再生</button>
+      <button id="btnStep">⏭ 1ステップ</button>
+      <button id="btnReset">↺ リセット</button>
+      <button id="btnRandom">🎲 初期ノイズ再生成</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="panel">
+      <h2>操作パネル</h2>
+
+      <div class="tabs">
+        <button class="tab active" data-tab="basic">基本</button>
+        <button class="tab" data-tab="shear">せん断/流動</button>
+      </div>
+
+      <div class="tabBody" id="tab-basic">
+        <div class="grid">
+          <label>
+            グリッドサイズ
+            <select id="gridSize">
+              <option value="96">96×96（軽い）</option>
+              <option value="128" selected>128×128（標準）</option>
+              <option value="160">160×160（やや重い）</option>
+              <option value="192">192×192（重い）</option>
+            </select>
+          </label>
+
+          <label>
+            Δt（時間刻み）
+            <input id="dt" type="range" min="0.001" max="0.05" step="0.001" value="0.01" />
+            <span class="val" id="dtVal"></span>
+          </label>
+
+          <label>
+            κ（界面エネルギー）
+            <input id="kappa" type="range" min="0.2" max="3.0" step="0.05" value="1.0" />
+            <span class="val" id="kappaVal"></span>
+          </label>
+
+          <label>
+            M（移動度）
+            <input id="mobility" type="range" min="0.2" max="3.0" step="0.05" value="1.0" />
+            <span class="val" id="mobilityVal"></span>
+          </label>
+
+          <label>
+            初期ノイズ振幅
+            <input id="noise" type="range" min="0.001" max="0.2" step="0.001" value="0.04" />
+            <span class="val" id="noiseVal"></span>
+          </label>
+
+          <label>
+            平均濃度（組成バイアス）
+            <input id="meanBias" type="range" min="-0.6" max="0.6" step="0.01" value="0.0" />
+            <span class="val" id="meanBiasVal"></span>
+          </label>
+
+          <label>
+            1フレームあたり更新回数
+            <input id="stepsPerFrame" type="range" min="1" max="30" step="1" value="10" />
+            <span class="val" id="spfVal"></span>
+          </label>
+
+          <label>
+            表示（色）
+            <select id="colormap">
+              <option value="rb" selected>赤↔青（-1〜+1）</option>
+              <option value="gray">グレースケール</option>
+              <option value="thermal">サーマル風</option>
+            </select>
+          </label>
+
+          <label class="checkbox">
+            <input id="showGrid" type="checkbox" />
+            ピクセル格子を表示
+          </label>
+
+          <label class="checkbox">
+            <input id="autoScale" type="checkbox" checked />
+            値域を自動スケーリング（見やすさ優先）
+          </label>
+
+          <label class="checkbox">
+            <input id="massCorrect" type="checkbox" checked />
+            平均濃度を保つ補正（移流の数値拡散対策）
+          </label>
+        </div>
+
+        <details class="help" open>
+          <summary>まずはここだけ触ればOK（おすすめ）</summary>
+          <div class="helpBody">
+            <ol>
+              <li>「▶ 再生」を押す</li>
+              <li>「せん断/流動」タブで <b>せん断率 γ̇</b> を上げる</li>
+              <li>ドメインが流れ方向に伸び、配向する様子を観察</li>
+            </ol>
+          </div>
+        </details>
+      </div>
+
+      <div class="tabBody hidden" id="tab-shear">
+        <div class="grid">
+          <label class="checkbox">
+            <input id="enableShear" type="checkbox" />
+            せん断流（単純せん断）を有効化
+          </label>
+          <label>
+            せん断率 γ̇（大きいほど引き伸ばされる）
+            <input id="shearRate" type="range" min="0" max="0.3" step="0.01" value="0.01" />
+            <span class="val" id="shearRateVal"></span>
+          </label>
+          <label>
+            せん断モード
+            <select id="shearMode">
+              <option value="couette" selected>Couette: u=(γ̇(y-0.5), 0)</option>
+              <option value="osc">振動せん断: γ̇ sin(2π f t)</option>
+            </select>
+          </label>
+          <label>
+            振動せん断の周波数 f（mode=振動のとき）
+            <input id="shearFreq" type="range" min="0.05" max="0.5" step="0.05" value="0.1" />
+            <span class="val" id="shearFreqVal"></span>
+          </label>
+          <label>
+            体感のコツ
+            <span class="val">γ̇↑（伸びる） / κ↑（界面が滑らか） / M↑（相分離が速い）</span>
+          </label>
+        </div>
+
+        <details class="help">
+          <summary>粘弾性について（次の拡張案）</summary>
+          <div class="helpBody">
+            <p>
+              本デモは「せん断流＋相分離（移流付き Cahn–Hilliard）」です。
+              本格的な粘弾性相分離（応力場や流体方程式との結合）を入れると計算が重くなりがちですが、
+              体験用としては「応力場1枚＋Maxwell緩和」で“配向が残る”ような挙動を軽量に追加できます。
+            </p>
+          </div>
+        </details>
+      </div>
+
+      <div class="stats">
+        <div><span class="k">状態:</span> <span id="state">停止</span></div>
+        <div><span class="k">ステップ:</span> <span id="stepCount">0</span></div>
+        <div><span class="k">時刻 t:</span> <span id="time">0</span></div>
+        <div><span class="k">平均濃度:</span> <span id="meanC">0</span></div>
+        <div><span class="k">計算FPS:</span> <span id="fps">-</span></div>
+      </div>
+
+      <details class="help">
+        <summary>式（簡易）</summary>
+        <div class="helpBody">
+          <p>化学ポテンシャル: <code>μ = c^3 - c - κ∇²c</code></p>
+          <p>移流付き Cahn–Hilliard: <code>∂c/∂t + u·∇c = M ∇² μ</code>（<code>u</code> は単純せん断）</p>
+        </div>
+      </details>
+    </section>
+
+    <section class="view">
+      <canvas id="canvas" width="512" height="512" aria-label="phase separation visualization"></canvas>
+      <div class="hint">ドラッグで局所的に濃度を変えられます（左: + / 右: -）。</div>
+    </section>
+  </main>
+
+  <footer>
+    <span>© ブラウザ相分離デモ（せん断版・単一HTML）</span>
+    <span class="sep">|</span>
+    <span>動作: Chrome / Edge / Firefox（最新推奨）</span>
+  </footer>
+
+  <script>
+  // Shear phase separation demo (2D Cahn–Hilliard with advection).
+  // No external dependencies. Educational / experience-focused implementation.
+
+  (() => {
+    'use strict';
+
+    // ---------- DOM ----------
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d', { willReadFrequently: false });
+
+    const btnToggle = document.getElementById('btnToggle');
+    const btnStep   = document.getElementById('btnStep');
+    const btnReset  = document.getElementById('btnReset');
+    const btnRandom = document.getElementById('btnRandom');
+
+    // Tabs
+    const tabs = Array.from(document.querySelectorAll('.tab'));
+    const bodies = {
+      basic: document.getElementById('tab-basic'),
+      shear: document.getElementById('tab-shear')
+    };
+    tabs.forEach(t => t.addEventListener('click', () => {
+      tabs.forEach(x => x.classList.remove('active'));
+      t.classList.add('active');
+      const key = t.dataset.tab;
+      Object.entries(bodies).forEach(([k, el]) => {
+        if(k === key) el.classList.remove('hidden');
+        else el.classList.add('hidden');
+      });
+    }));
+
+    // Controls
+    const gridSizeSel = document.getElementById('gridSize');
+    const dtSlider = document.getElementById('dt');
+    const kappaSlider = document.getElementById('kappa');
+    const mobilitySlider = document.getElementById('mobility');
+    const noiseSlider = document.getElementById('noise');
+    const meanBiasSlider = document.getElementById('meanBias');
+    const stepsPerFrameSlider = document.getElementById('stepsPerFrame');
+    const colormapSel = document.getElementById('colormap');
+    const showGridChk = document.getElementById('showGrid');
+    const autoScaleChk = document.getElementById('autoScale');
+    const massCorrectChk = document.getElementById('massCorrect');
+
+    const enableShearChk = document.getElementById('enableShear');
+    const shearRateSlider = document.getElementById('shearRate');
+    const shearModeSel = document.getElementById('shearMode');
+    const shearFreqSlider = document.getElementById('shearFreq');
+
+    // Value labels
+    const dtVal = document.getElementById('dtVal');
+    const kappaVal = document.getElementById('kappaVal');
+    const mobilityVal = document.getElementById('mobilityVal');
+    const noiseVal = document.getElementById('noiseVal');
+    const meanBiasVal = document.getElementById('meanBiasVal');
+    const spfVal = document.getElementById('spfVal');
+    const shearRateVal = document.getElementById('shearRateVal');
+    const shearFreqVal = document.getElementById('shearFreqVal');
+
+    // Stats
+    const stateEl = document.getElementById('state');
+    const stepCountEl = document.getElementById('stepCount');
+    const timeEl = document.getElementById('time');
+    const meanCEl = document.getElementById('meanC');
+    const fpsEl = document.getElementById('fps');
+
+    function fmt(x, d=3){ return Number(x).toFixed(d); }
+    function syncLabels(){
+      dtVal.textContent = fmt(dtSlider.value, 3);
+      kappaVal.textContent = fmt(kappaSlider.value, 2);
+      mobilityVal.textContent = fmt(mobilitySlider.value, 2);
+      noiseVal.textContent = fmt(noiseSlider.value, 3);
+      meanBiasVal.textContent = fmt(meanBiasSlider.value, 2);
+      spfVal.textContent = stepsPerFrameSlider.value;
+      shearRateVal.textContent = fmt(shearRateSlider.value, 2);
+      shearFreqVal.textContent = fmt(shearFreqSlider.value, 2);
+    }
+    ['input','change'].forEach(ev => {
+      [gridSizeSel,dtSlider,kappaSlider,mobilitySlider,noiseSlider,meanBiasSlider,stepsPerFrameSlider,colormapSel,showGridChk,autoScaleChk,massCorrectChk,
+       enableShearChk,shearRateSlider,shearModeSel,shearFreqSlider].forEach(el => el.addEventListener(ev, syncLabels));
+    });
+    syncLabels();
+
+    // ---------- Simulation state ----------
+    let N = parseInt(gridSizeSel.value, 10);
+    let c = null;
+    let mu = null;
+    let lap = null;
+    let tmp = null;
+    let adv = null;
+
+    let running = false;
+    let stepCount = 0;
+    let time = 0;
+
+    function alloc(n){
+      N = n;
+      c = new Float32Array(N*N);
+      mu = new Float32Array(N*N);
+      lap = new Float32Array(N*N);
+      tmp = new Float32Array(N*N);
+      adv = new Float32Array(N*N);
+
+      canvas.width = N;
+      canvas.height = N;
+      ctx.imageSmoothingEnabled = false;
+    }
+
+    function wrap(i){
+      if(i < 0) return i + N;
+      if(i >= N) return i - N;
+      return i;
+    }
+
+    // Bilinear sample with periodic boundaries
+    function sampleBilinear(src, x, y){
+      const x0 = Math.floor(x), y0 = Math.floor(y);
+      const x1 = wrap(x0 + 1), y1 = wrap(y0 + 1);
+      const tx = x - x0, ty = y - y0;
+      const X0 = wrap(x0), Y0 = wrap(y0);
+      const i00 = X0 + Y0*N;
+      const i10 = x1 + Y0*N;
+      const i01 = X0 + y1*N;
+      const i11 = x1 + y1*N;
+      const a = src[i00]*(1-tx) + src[i10]*tx;
+      const b = src[i01]*(1-tx) + src[i11]*tx;
+      return a*(1-ty) + b*ty;
+    }
+
+    function addInitialNoise(){
+      const amp = parseFloat(noiseSlider.value);
+      const bias = parseFloat(meanBiasSlider.value);
+      for(let i=0;i<N*N;i++) c[i] = bias + (Math.random()*2 - 1) * amp;
+    }
+
+    function reset(){
+      alloc(parseInt(gridSizeSel.value, 10));
+      addInitialNoise();
+      stepCount = 0;
+      time = 0;
+      draw();
+      updateStats();
+    }
+
+    // 5-point Laplacian
+    function laplacian(src, dst){
+      for(let y=0;y<N;y++){
+        const ym = wrap(y-1), yp = wrap(y+1);
+        const row = y*N;
+        const rowm = ym*N;
+        const rowp = yp*N;
+        for(let x=0;x<N;x++){
+          const xm = wrap(x-1), xp = wrap(x+1);
+          const i = row + x;
+          dst[i] = src[row + xm] + src[row + xp] + src[rowm + x] + src[rowp + x] - 4*src[i];
+        }
+      }
+    }
+
+    // Simple shear u=(u_x,0)
+    function shearUx(y, t){
+      const gdot = parseFloat(shearRateSlider.value);
+      const yy = (y / (N-1)) - 0.5;
+      if(shearModeSel.value === 'osc'){
+        const f = parseFloat(shearFreqSlider.value);
+        return (gdot * Math.sin(2*Math.PI*f*t)) * yy;
+      }
+      return gdot * yy;
+    }
+
+    // Semi-Lagrangian advection: c(x,y) <- c(x - u_x*dt*N, y)
+    function advectField(src, dst, dt, t){
+      for(let y=0;y<N;y++){
+        const ux = enableShearChk.checked ? shearUx(y, t) : 0;
+        const shift = ux * dt * N;
+        for(let x=0;x<N;x++){
+          let xx = (x - shift) % N;
+          if(xx < 0) xx += N;
+          dst[x + y*N] = sampleBilinear(src, xx, y);
+        }
+      }
+    }
+
+    function meanOf(field){
+      let s = 0;
+      for(let i=0;i<N*N;i++) s += field[i];
+      return s / (N*N);
+    }
+
+    // One step: advection + CH diffusion
+    function stepOnce(){
+      const dt = parseFloat(dtSlider.value);
+      const kappa = parseFloat(kappaSlider.value);
+      const M = parseFloat(mobilitySlider.value);
+
+      // Advection
+      if(enableShearChk.checked){
+        const m0 = meanOf(c);
+        advectField(c, adv, dt, time);
+        c.set(adv);
+        if(massCorrectChk.checked){
+          const m1 = meanOf(c);
+          const d = m0 - m1;
+          for(let i=0;i<N*N;i++) c[i] += d;
+        }
+      }
+
+      // CH diffusion
+      // mu = c^3 - c - kappa lap(c)
+      laplacian(c, lap);
+      for(let i=0;i<N*N;i++){
+        const ci = c[i];
+        mu[i] = (ci*ci*ci - ci) - kappa * lap[i];
+      }
+      laplacian(mu, tmp);
+      const coef = dt * M;
+      for(let i=0;i<N*N;i++) c[i] += coef * tmp[i];
+
+      stepCount++;
+      time += dt;
+    }
+
+    // ---------- Rendering ----------
+    function clamp01(x){ return x < 0 ? 0 : (x > 1 ? 1 : x); }
+
+    function colorMap(val, vmin, vmax){
+      const t = clamp01((val - vmin) / (vmax - vmin + 1e-12));
+      const mode = colormapSel.value;
+      let r=0,g=0,b=0;
+      if(mode === 'gray'){
+        r=g=b=Math.round(255*t);
+      } else if(mode === 'thermal'){
+        const x = t;
+        r = Math.round(255*clamp01(1.5*x));
+        g = Math.round(255*clamp01(1.8*(x-0.2)));
+        b = Math.round(255*clamp01(1.6*(0.7-x)));
+      } else {
+        const u = t;
+        const w = 1.0 - Math.abs(2*u - 1.0);
+        r = Math.round(255*clamp01(2*u));
+        b = Math.round(255*clamp01(2*(1-u)));
+        g = Math.round(255*w);
+      }
+      return [r,g,b,255];
+    }
+
+    function draw(){
+      const img = ctx.createImageData(N, N);
+      const data = img.data;
+
+      let vmin = -1, vmax = 1;
+      if(autoScaleChk.checked){
+        let mn = Infinity, mx = -Infinity;
+        for(let i=0;i<N*N;i++){
+          const v = c[i];
+          if(v < mn) mn = v;
+          if(v > mx) mx = v;
+        }
+        const pad = 0.05*(mx-mn + 1e-12);
+        vmin = mn - pad;
+        vmax = mx + pad;
+      }
+
+      for(let i=0;i<N*N;i++){
+        const [r,g,b,a] = colorMap(c[i], vmin, vmax);
+        const j = i*4;
+        data[j]=r; data[j+1]=g; data[j+2]=b; data[j+3]=a;
+      }
+
+      ctx.putImageData(img, 0, 0);
+
+      if(showGridChk.checked){
+        ctx.save();
+        ctx.globalAlpha = 0.15;
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 0.5;
+        for(let x=0;x<=N;x+=8){
+          ctx.beginPath(); ctx.moveTo(x+0.5, 0); ctx.lineTo(x+0.5, N); ctx.stroke();
+        }
+        for(let y=0;y<=N;y+=8){
+          ctx.beginPath(); ctx.moveTo(0, y+0.5); ctx.lineTo(N, y+0.5); ctx.stroke();
+        }
+        ctx.restore();
+      }
+    }
+
+    // ---------- Stats ----------
+    let lastFpsT = performance.now();
+    let frames = 0;
+
+    function updateStats(){
+      const mean = meanOf(c);
+      stepCountEl.textContent = String(stepCount);
+      timeEl.textContent = fmt(time, 2);
+      meanCEl.textContent = fmt(mean, 4);
+
+      frames++;
+      const now = performance.now();
+      if(now - lastFpsT > 500){
+        const fps = 1000 * frames / (now - lastFpsT);
+        fpsEl.textContent = fmt(fps, 1);
+        frames = 0;
+        lastFpsT = now;
+      }
+    }
+
+    // ---------- UI actions ----------
+    function toggle(){
+      running = !running;
+      btnToggle.textContent = running ? '⏸ 停止' : '▶ 再生';
+      stateEl.textContent = running ? '実行中' : '停止';
+    }
+
+    btnToggle.addEventListener('click', toggle);
+    btnStep.addEventListener('click', () => {
+      if(!running){
+        stepOnce();
+        draw();
+        updateStats();
+      }
+    });
+
+    btnReset.addEventListener('click', () => {
+      running = false;
+      btnToggle.textContent = '▶ 再生';
+      stateEl.textContent = '停止';
+      reset();
+    });
+
+    btnRandom.addEventListener('click', () => {
+      addInitialNoise();
+      stepCount = 0;
+      time = 0;
+      draw();
+      updateStats();
+    });
+
+    gridSizeSel.addEventListener('change', () => {
+      running = false;
+      btnToggle.textContent = '▶ 再生';
+      stateEl.textContent = '停止';
+      reset();
+    });
+
+    // Paint interaction
+    let painting = false;
+    let paintSign = +1;
+
+    function canvasToGrid(evt){
+      const rect = canvas.getBoundingClientRect();
+      const x = (evt.clientX - rect.left) / rect.width * N;
+      const y = (evt.clientY - rect.top) / rect.height * N;
+      return [Math.floor(x), Math.floor(y)];
+    }
+
+    function paint(evt){
+      const [gx, gy] = canvasToGrid(evt);
+      const radius = Math.max(2, Math.floor(N/30));
+      const amp = 0.25 * paintSign;
+      for(let dy=-radius; dy<=radius; dy++){
+        for(let dx=-radius; dx<=radius; dx++){
+          const x = wrap(gx+dx);
+          const y = wrap(gy+dy);
+          const r2 = dx*dx + dy*dy;
+          if(r2 <= radius*radius){
+            const i = x + y*N;
+            c[i] = Math.max(-1.5, Math.min(1.5, c[i] + amp*Math.exp(-r2/(radius*radius))));
+          }
+        }
+      }
+    }
+
+    canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+    canvas.addEventListener('pointerdown', (evt) => {
+      painting = true;
+      paintSign = (evt.button === 2) ? -1 : +1;
+      paint(evt);
+      draw();
+    });
+    window.addEventListener('pointerup', () => painting=false);
+    canvas.addEventListener('pointermove', (evt) => {
+      if(!painting) return;
+      paint(evt);
+      draw();
+    });
+
+    // ---------- Main loop ----------
+    function loop(){
+      if(running){
+        const spf = parseInt(stepsPerFrameSlider.value, 10);
+        for(let k=0;k<spf;k++) stepOnce();
+        draw();
+        updateStats();
+      } else {
+        updateStats();
+      }
+      requestAnimationFrame(loop);
+    }
+
+    // ---------- Boot ----------
+    reset();
+    stateEl.textContent = '停止';
+    requestAnimationFrame(loop);
+
+  })();
+  </script>
+</body>
+</html>
