@@ -20,7 +20,7 @@
   body{
     margin:0;
     font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", "Noto Sans JP", Helvetica, Arial;
-    background: radial-gradient(1200px 800px at 20% 0%, #12204a 0%, var(--bg) 55%);
+    background: radial-gradient(900px 600px at 20% 0%, #12204a 0%, var(--bg) 55%);
     color:var(--text);
   }
   header{
@@ -94,7 +94,21 @@
   .helpBody code{color:var(--accent2)}
 
   .view{display:flex; flex-direction:column; align-items:center; justify-content:flex-start; gap:10px}
-  canvas{
+  
+  .eqPanel{
+    width: min(76vh, 860px);
+    max-width: 100%;
+  }
+  .eqPanel pre{
+    max-height: 220px;
+    overflow: auto;
+    margin: 0;
+    white-space: pre-wrap;
+    font-size: 12px;
+    line-height: 1.6;
+    color: rgba(232,236,255,0.88);
+  }
+canvas{
     width:min(76vh, 860px);
     height:min(76vh, 860px);
     border-radius:16px;
@@ -165,6 +179,39 @@
             <input id="mobility" type="range" min="0.2" max="3.0" step="0.05" value="1.0" />
             <span class="val" id="mobilityVal"></span>
           </label>
+
+        <!-- Flory–Huggins controls -->
+        <label class="checkbox">
+          <input id="useFH" type="checkbox" />
+          Flory–Huggins（FH）自由エネルギーを使用
+        </label>
+        <label>
+          系の種類
+          <select id="fhSystem">
+            <option value="blend" selected>ポリマーA/ポリマーB ブレンド</option>
+            <option value="solution">ポリマー/溶媒（Bを溶媒: N_B=1）</option>
+          </select>
+        </label>
+        <label>
+          χ（相互作用パラメータ）
+          <input id="chi" type="range" min="0" max="4" step="0.01" value="2.0" />
+          <span class="val" id="chiVal"></span>
+        </label>
+        <label>
+          N_A（Aの重合度 / セグメント数）
+          <input id="NA" type="range" min="1" max="500" step="1" value="100" />
+          <span class="val" id="NAVal"></span>
+        </label>
+        <label>
+          N_B（Bの重合度 / セグメント数）
+          <input id="NB" type="range" min="1" max="500" step="1" value="100" />
+          <span class="val" id="NBVal"></span>
+        </label>
+        <label class="checkbox">
+          <input id="mobilityPhi" type="checkbox" checked />
+          M(φ)=M0·φ(1-φ)（FH向け：端で移動度低下）
+        </label>
+
 
           <label>
             初期ノイズ振幅
@@ -271,17 +318,23 @@
       </div>
 
       <details class="help">
-        <summary>式（簡易）</summary>
-        <div class="helpBody">
-          <p>化学ポテンシャル: <code>μ = c^3 - c - κ∇²c</code></p>
-          <p>移流付き Cahn–Hilliard: <code>∂c/∂t + u·∇c = M ∇² μ</code>（<code>u</code> は単純せん断）</p>
-        </div>
-      </details>
+  <summary>式（簡易）</summary>
+  <div class="helpBody">
+    <p>数式の表示は、右側のシミュレーション結果の下にあります。</p>
+  </div>
+</details>
     </section>
 
     <section class="view">
       <canvas id="canvas" width="512" height="512" aria-label="phase separation visualization"></canvas>
       <div class="hint">ドラッグで局所的に濃度を変えられます（左: + / 右: -）。</div>
+
+    <div class="panel eqPanel" style="padding:12px 14px;">
+      <h2 style="margin:0 0 8px; font-size:13px; color:var(--muted);">数式（簡易）</h2>
+      <pre id="eqBox"></pre>
+      <div style="margin-top:6px; color:var(--muted); font-size:11px;">注: 表示は説明用（実装は差分法・周期境界・半ラグランジュ移流）。</div>
+    </div>
+
     </section>
   </main>
 
@@ -297,6 +350,10 @@
 
   (() => {
     'use strict';
+
+  // Safety: forward declaration so calls never fail even if insertion order changes
+  function updateEquations(){}
+
 
     // ---------- DOM ----------
     const canvas = document.getElementById('canvas');
@@ -335,6 +392,14 @@
     const showGridChk = document.getElementById('showGrid');
     const autoScaleChk = document.getElementById('autoScale');
     const massCorrectChk = document.getElementById('massCorrect');
+  // Flory–Huggins (FH)
+  const useFHChk = document.getElementById('useFH');
+  const fhSystemSel = document.getElementById('fhSystem');
+  const chiSlider = document.getElementById('chi');
+  const naSlider = document.getElementById('NA');
+  const nbSlider = document.getElementById('NB');
+  const mobilityPhiChk = document.getElementById('mobilityPhi');
+
 
     const enableShearChk = document.getElementById('enableShear');
     const shearRateSlider = document.getElementById('shearRate');
@@ -350,6 +415,11 @@
     const spfVal = document.getElementById('spfVal');
     const shearRateVal = document.getElementById('shearRateVal');
     const shearFreqVal = document.getElementById('shearFreqVal');
+  // FH labels
+  const chiVal = document.getElementById('chiVal');
+  const NAVal = document.getElementById('NAVal');
+  const NBVal = document.getElementById('NBVal');
+
 
     // Stats
     const stateEl = document.getElementById('state');
@@ -368,12 +438,62 @@
       spfVal.textContent = stepsPerFrameSlider.value;
       shearRateVal.textContent = fmt(shearRateSlider.value, 2);
       shearFreqVal.textContent = fmt(shearFreqSlider.value, 2);
+  chiVal.textContent = fmt(chiSlider.value, 2);
+  NAVal.textContent = naSlider.value;
+  if(fhSystemSel.value === 'solution') {
+    nbSlider.value = '1';
+    NBVal.textContent = '1';
+  } else {
+    NBVal.textContent = nbSlider.value;
+  }
+
+    
+
+
+  const eqBox = document.getElementById('eqBox');
+  function updateEquations(){
+    if(!eqBox) return;
+    const dt = parseFloat(dtSlider.value);
+    const kappa = parseFloat(kappaSlider.value);
+    const M0 = parseFloat(mobilitySlider.value);
+    const shearOn = enableShearChk.checked;
+    const gdot = parseFloat(shearRateSlider.value);
+    const L = [];
+    L.push('【共通：移流付き Cahn–Hilliard（保存量）】');
+    L.push('  ∂c/∂t + u·∇c = ∇·( M ∇μ )');
+    L.push('  （実装はスカラーMで  ∂c/∂t + u·∇c = M ∇²μ  に相当）');
+    if(shearOn){
+      L.push('  u=(u_x,0),  u_x = γ̇ (y/L - 1/2)  （振動: γ̇ sin(2π f t)）');
+      L.push(`  γ̇=${gdot.toFixed(3)}  Δt=${dt.toFixed(4)}`);
+    } else {
+      L.push(`  せん断OFF  Δt=${dt.toFixed(4)}`);
     }
+    L.push('');
+    if(!useFHChk.checked){
+      L.push('【既定：二重井戸】 μ = (c^3 - c) - κ ∇²c');
+      L.push(`  κ=${kappa.toFixed(3)}  M=${M0.toFixed(3)}`);
+    } else {
+      const chi = parseFloat(chiSlider.value);
+      const NA = Math.max(1, parseInt(naSlider.value,10));
+      const NB = (fhSystemSel.value === 'solution') ? 1 : Math.max(1, parseInt(nbSlider.value,10));
+      if(fhSystemSel.value === 'blend') L.push('【FH：ポリマーA/ポリマーB ブレンド】');
+      else L.push('【FH：ポリマー/溶媒】（Bを溶媒として N_B=1）');
+      L.push('  φ=(c+1)/2');
+      L.push('  f(φ)=(φ/N_A)lnφ + ((1-φ)/N_B)ln(1-φ) + χ φ(1-φ)');
+      L.push('  μ_φ=(1/N_A)lnφ - (1/N_B)ln(1-φ) + χ(1-2φ)');
+      L.push('  μ(c)≈0.5 μ_φ - κ ∇²c');
+      L.push(`  χ=${chi.toFixed(3)}  N_A=${NA}  N_B=${NB}  κ=${kappa.toFixed(3)}  M0=${M0.toFixed(3)}`);
+    }
+    eqBox.textContent = L.join('\n');
+  }
+  if (typeof updateEquations === 'function') updateEquations();}
     ['input','change'].forEach(ev => {
       [gridSizeSel,dtSlider,kappaSlider,mobilitySlider,noiseSlider,meanBiasSlider,stepsPerFrameSlider,colormapSel,showGridChk,autoScaleChk,massCorrectChk,
-       enableShearChk,shearRateSlider,shearModeSel,shearFreqSlider].forEach(el => el.addEventListener(ev, syncLabels));
+       enableShearChk,shearRateSlider,shearModeSel,shearFreqSlider,
+  useFHChk, fhSystemSel, chiSlider, naSlider, nbSlider, mobilityPhiChk].forEach(el => el.addEventListener(ev, syncLabels));
     });
     syncLabels();
+  if (typeof updateEquations === 'function') updateEquations();
 
     // ---------- Simulation state ----------
     let N = parseInt(gridSizeSel.value, 10);
@@ -500,15 +620,41 @@
       }
 
       // CH diffusion
-      // mu = c^3 - c - kappa lap(c)
-      laplacian(c, lap);
-      for(let i=0;i<N*N;i++){
+    laplacian(c, lap);
+
+    // Chemical potential: default (double-well) or Flory–Huggins (FH)
+    const useFH = useFHChk.checked;
+    const eps = 1e-6;
+    const chi = parseFloat(chiSlider.value);
+    const NA = Math.max(1, parseInt(naSlider.value, 10));
+    const NB = (fhSystemSel.value === 'solution') ? 1 : Math.max(1, parseInt(nbSlider.value, 10));
+
+    for(let i=0;i<N*N;i++){
+      if(!useFH){
         const ci = c[i];
         mu[i] = (ci*ci*ci - ci) - kappa * lap[i];
+      } else {
+        let phi = 0.5*(c[i] + 1.0);
+        if(phi < eps) phi = eps;
+        if(phi > 1.0-eps) phi = 1.0-eps;
+        const mu_phi = (Math.log(phi)/NA) - (Math.log(1.0-phi)/NB) + chi*(1.0 - 2.0*phi);
+        mu[i] = 0.5*mu_phi - kappa * lap[i];
       }
-      laplacian(mu, tmp);
-      const coef = dt * M;
-      for(let i=0;i<N*N;i++) c[i] += coef * tmp[i];
+    }
+
+    laplacian(mu, tmp);
+
+    const M0 = M;
+    for(let i=0;i<N*N;i++){
+      let Mloc = M0;
+      if(useFH && mobilityPhiChk.checked){
+        let phi = 0.5*(c[i] + 1.0);
+        if(phi < 0) phi = 0;
+        if(phi > 1) phi = 1;
+        Mloc = M0 * phi * (1.0 - phi);
+      }
+      c[i] += (dt * Mloc) * tmp[i];
+    }
 
       stepCount++;
       time += dt;
@@ -658,7 +804,10 @@
           const r2 = dx*dx + dy*dy;
           if(r2 <= radius*radius){
             const i = x + y*N;
-            c[i] = Math.max(-1.5, Math.min(1.5, c[i] + amp*Math.exp(-r2/(radius*radius))));
+            const e = (useFHChk && useFHChk.checked) ? 2e-6 : 0.0;
+          const cmin = -1.5 + e;
+          const cmax =  1.5 - e;
+          c[i] = Math.max(cmin, Math.min(cmax, c[i] + amp*Math.exp(-r2/(radius*radius))));
           }
         }
       }
